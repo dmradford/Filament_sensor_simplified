@@ -31,6 +31,8 @@ Configuration couldn't be simpler, all you need is to configure listening board 
 
 Default pin is -1 (not configured) and ground (as it is safer, read below).
 
+If your printer does not support the default M600 command, no problem! Input any GCode command of your choosing.
+
 **WARNING! Never connect the switch input to 5V as it could fry the GPIO section of your Raspberry!**
 
 **WARNING! When using test button on input pin used by other application it will reset internal pull up/down resistor**

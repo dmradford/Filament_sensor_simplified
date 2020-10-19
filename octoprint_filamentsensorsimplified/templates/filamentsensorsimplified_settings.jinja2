@@ -12,6 +12,16 @@
     </div>
     <div class="control-group">
         <div class="marginBot">
+            <b>Command to send to printer upon filament runout detected</b>
+        </div>
+        <label class="control-label">{{ _('GCode Command:') }}</label>
+        <div class="controls" data-toggle="tooltip">
+            <input id="commandInput" type="text" class="input-medium text-right"
+                   data-bind="value: settingsViewModel.settings.plugins.filamentsensorsimplified.command">
+        </div>
+    </div>
+    <div class="control-group">
+        <div class="marginBot">
             <b>Input terminal of the sensor (switch) needs to be connected to ground or 3.3 V</b>
         </div>
         <label class="control-label">{{ _('Sensor is connected to:') }}</label>

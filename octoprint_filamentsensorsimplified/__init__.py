@@ -31,6 +31,10 @@ class Filament_sensor_simplifiedPlugin(octoprint.plugin.StartupPlugin,
     def switch(self):
         return int(self._settings.get(["switch"]))
 
+    @property
+    def command(self):
+        return str(self._settings.get(["command"]))
+
     # AssetPlugin hook
     def get_assets(self):
         return dict(js=["js/filamentsensorsimplified.js"], css=["css/filamentsensorsimplified.css"])
@@ -42,7 +46,8 @@ class Filament_sensor_simplifiedPlugin(octoprint.plugin.StartupPlugin,
     # Settings hook
     def get_settings_defaults(self):
         return dict(
-            pin=-1,  # Default is -1
+            pin=-1, # Default is -1
+            command="M600 X0 Y0",
             switch=0
         )
 
@@ -123,14 +128,14 @@ class Filament_sensor_simplifiedPlugin(octoprint.plugin.StartupPlugin,
         self._printer.commands("M603")
 
     def sending_gcode(self, comm_instance, phase, cmd, cmd_type, gcode, subcode=None, tags=None, *args, **kwargs):
-        if self.changing_filament_initiated and self.m600Enabled:
+        if self.changing_filament_initiated:
             if self.changing_filament_started:
                 if not re.search("^M113", cmd):
                     self.changing_filament_initiated = False
                     self.changing_filament_started = False
                     if self.no_filament():
                         self.send_out_of_filament()
-            if cmd == "M600 X0 Y0":
+            if cmd == self.command:
                 self.changing_filament_started = True
 
     def gcode_response_received(self, comm, line, *args, **kwargs):
@@ -156,7 +161,7 @@ class Filament_sensor_simplifiedPlugin(octoprint.plugin.StartupPlugin,
                     self._logger.debug("Printer doesn't support M600")
                     self.m600Enabled = False
                     self.checkingM600 = False
-                    self._plugin_manager.send_plugin_message(self._identifier, dict(type="info", autoClose=True, msg="M600 gcode command is not enabled on this printer! This plugin won't work."))
+                    self._plugin_manager.send_plugin_message(self._identifier, dict(type="info", autoClose=True, msg="M600 gcode command is not enabled on this printer! Please define a different command in settings"))
                 else:
                     self._logger.debug("M600 check unsuccessful, trying again")
                     self.checkM600Enabled()
@@ -191,41 +196,40 @@ class Filament_sensor_simplifiedPlugin(octoprint.plugin.StartupPlugin,
             self._logger.info("Printing aborted: no filament detected!")
             self._printer.cancel_print()
             self._plugin_manager.send_plugin_message(self._identifier, dict(type="error", autoClose=True, msg="No filament detected! Print cancelled."))
-        if self.m600Enabled:
-            # Enable sensor
-            if event in (
-                    Events.PRINT_STARTED,
-                    Events.PRINT_RESUMED
-            ):
-                self._logger.info("%s: Enabling filament sensor." % (event))
-                if self.sensor_enabled():
-                    self.print_head_parking = False
-                    self.print_head_parked = False
-                    GPIO.remove_event_detect(self.pin)
-                    if self.switch is 0:
-                        GPIO.add_event_detect(
-                            self.pin, GPIO.RISING,
-                            callback=self.sensor_callback,
-                            bouncetime=250
-                        )
-                    else:
-                        GPIO.add_event_detect(
-                            self.pin, GPIO.FALLING,
-                            callback=self.sensor_callback,
-                            bouncetime=250
-                        )
-            # Disable sensor
-            elif event in (
-                    Events.PRINT_DONE,
-                    Events.PRINT_FAILED,
-                    Events.PRINT_CANCELLED,
-                    Events.ERROR
-            ):
-                self._logger.info("%s: Disabling filament sensor." % (event))
+        # Enable sensor
+        if event in (
+                Events.PRINT_STARTED,
+                Events.PRINT_RESUMED
+        ):
+            self._logger.info("%s: Enabling filament sensor." % (event))
+            if self.sensor_enabled():
+                self.print_head_parking = False
+                self.print_head_parked = False
                 GPIO.remove_event_detect(self.pin)
-                self.changing_filament_initiated = False
-                self.changing_filament_started = False
-                self.paused_for_user = False
+                if self.switch is 0:
+                    GPIO.add_event_detect(
+                        self.pin, GPIO.RISING,
+                        callback=self.sensor_callback,
+                        bouncetime=250
+                    )
+                else:
+                    GPIO.add_event_detect(
+                        self.pin, GPIO.FALLING,
+                        callback=self.sensor_callback,
+                        bouncetime=250
+                    )
+        # Disable sensor
+        elif event in (
+                Events.PRINT_DONE,
+                Events.PRINT_FAILED,
+                Events.PRINT_CANCELLED,
+                Events.ERROR
+        ):
+            self._logger.info("%s: Disabling filament sensor." % (event))
+            GPIO.remove_event_detect(self.pin)
+            self.changing_filament_initiated = False
+            self.changing_filament_started = False
+            self.paused_for_user = False
 
     def sensor_callback(self, _):
         sleep(1)
@@ -236,7 +240,7 @@ class Filament_sensor_simplifiedPlugin(octoprint.plugin.StartupPlugin,
     def send_out_of_filament(self):
         self.show_printer_runout_popup()
         self._logger.info("Sending out of filament GCODE")
-        self._printer.commands("M600 X0 Y0")
+        self._printer.commands(self.command)
         self.changing_filament_initiated = True
 
     def show_printer_runout_popup(self):
