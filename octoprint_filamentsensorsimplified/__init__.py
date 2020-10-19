@@ -17,8 +17,6 @@ class Filament_sensor_simplifiedPlugin(octoprint.plugin.StartupPlugin,
 
     def initialize(self):
         GPIO.setwarnings(True)
-        self.checkingM600 = False
-        self.m600Enabled = True
         self.changing_filament_initiated = False
         self.changing_filament_started = False
         self.paused_for_user = False
@@ -122,11 +120,6 @@ class Filament_sensor_simplifiedPlugin(octoprint.plugin.StartupPlugin,
         else:
             self._logger.info("Pin not configured, won't work unless configured!")
 
-    def checkM600Enabled(self):
-        sleep(1)
-        self.checkingM600 = True
-        self._printer.commands("M603")
-
     def sending_gcode(self, comm_instance, phase, cmd, cmd_type, gcode, subcode=None, tags=None, *args, **kwargs):
         if self.changing_filament_initiated:
             if self.changing_filament_started:
@@ -138,35 +131,6 @@ class Filament_sensor_simplifiedPlugin(octoprint.plugin.StartupPlugin,
             if cmd == self.command:
                 self.changing_filament_started = True
 
-    def gcode_response_received(self, comm, line, *args, **kwargs):
-        if self.m600Enabled:
-
-            if self.changing_filament_started:
-                if re.search("busy: paused for user", line):
-                    self._logger.debug("received busy paused for user")
-                    if not self.paused_for_user:
-                        self._plugin_manager.send_plugin_message(self._identifier, dict(type="info", autoClose=False, msg="Filament change: printer is waiting for user input."))
-                        self.paused_for_user = True
-                elif re.search("echo:busy: processing", line):
-                    self._logger.debug("received busy processing")
-                    if self.paused_for_user:
-                        self.paused_for_user = False
-
-            if self.checkingM600:
-                if re.search("^ok", line):
-                    self._logger.debug("Printer supports M600")
-                    self.m600Enabled = True
-                    self.checkingM600 = False
-                elif re.search("^echo:Unknown command: \"M603\"", line):
-                    self._logger.debug("Printer doesn't support M600")
-                    self.m600Enabled = False
-                    self.checkingM600 = False
-                    self._plugin_manager.send_plugin_message(self._identifier, dict(type="info", autoClose=True, msg="M600 gcode command is not enabled on this printer! Please define a different command in settings"))
-                else:
-                    self._logger.debug("M600 check unsuccessful, trying again")
-                    self.checkM600Enabled()
-        return line
-
     def sensor_enabled(self):
         return self.pin != -1
 
@@ -174,10 +138,6 @@ class Filament_sensor_simplifiedPlugin(octoprint.plugin.StartupPlugin,
         return GPIO.input(self.pin) != self.switch
 
     def on_event(self, event, payload):
-        if event is Events.CONNECTED:
-            self.checkM600Enabled()
-        elif event is Events.DISCONNECTED:
-            self.m600Enabled = True
 
         if event is Events.CLIENT_OPENED:
             if self.changing_filament_initiated and not self.changing_filament_started:
@@ -292,6 +252,5 @@ def __plugin_load__():
     global __plugin_hooks__
     __plugin_hooks__ = {
         "octoprint.plugin.softwareupdate.check_config": __plugin_implementation__.get_update_information,
-        "octoprint.comm.protocol.gcode.received": __plugin_implementation__.gcode_response_received,
         "octoprint.comm.protocol.gcode.sending": __plugin_implementation__.sending_gcode
     }
